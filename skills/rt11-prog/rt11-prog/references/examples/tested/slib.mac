@@ -1,0 +1,29 @@
+        .TITLE  SLIB    Call SYSLIB (FORTRAN convention) from MACRO
+        .MCALL  .PRINT,.EXIT,.TTYOUT
+        .GLOBL  IPEEK,ISPY,IRAD50
+START:  MOV     #A1,R5                  ; R5 -> argument list
+        JSR     PC,IPEEK                ; I = IPEEK(44) -> JSW in R0
+        MOV     R0,JSWV
+        MOV     #A2,R5
+        JSR     PC,IRAD50               ; N = IRAD50(6,'ABCDEF',R50)
+        CMP     R0,#6
+        BNE     BAD
+        CMP     R50,#^RABC
+        BNE     BAD
+        CMP     R50+2,#^RDEF
+        BNE     BAD
+        .PRINT  #OK
+        .EXIT
+BAD:    .PRINT  #NOK
+        .EXIT
+A1:     .WORD   1,ADR44                 ; arg count, then ADDRESSES of args
+A2:     .WORD   3,SIX,TXT,R50
+ADR44:  .WORD   44
+SIX:    .WORD   6
+R50:    .BLKW   2
+JSWV:   .WORD   0
+TXT:    .ASCII  /ABCDEF/
+OK:     .ASCIZ  /SYSLIB calls OK/
+NOK:    .ASCIZ  /?SLIB-F-Unexpected SYSLIB result/
+        .EVEN
+        .END    START

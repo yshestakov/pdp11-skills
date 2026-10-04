@@ -1,0 +1,32 @@
+        .TITLE  TIMER   .QSET/.MRKT completion routine, .TWAIT, .GTIM
+        .MCALL  .QSET,.MRKT,.TWAIT,.GTIM,.PRINT,.EXIT,.TTYOUT
+START:  .QSET   #QELS,#2                ; extra queue elements for timer requests
+        .MRKT   #AREA,#HALF,#CRTN,#1    ; fire CRTN after 30 ticks, id 1
+        BCS     ERR
+        .TWAIT  #AREA,#ONESEC           ; sleep 1 s
+        TST     FLAG
+        BEQ     NOFIRE
+        .PRINT  #MFIRE
+        .GTIM   #AREA,#TIME             ; ticks since midnight (hi,lo)
+        .PRINT  #MOK
+        .EXIT
+NOFIRE: .PRINT  #MNO
+        .EXIT
+ERR:    .PRINT  #MERR
+        .EXIT
+CRTN:   INC     FLAG                    ; completion routine: R0 = id
+        MOV     R0,ID
+        RTS     PC
+FLAG:   .WORD   0
+ID:     .WORD   0
+AREA:   .BLKW   4
+HALF:   .WORD   0,30.
+ONESEC: .WORD   0,60.
+TIME:   .BLKW   2
+QELS:   .BLKW   2*7.                    ; 7 words per queue element (SJ/FB; 10. under XM)
+MFIRE:  .ASCIZ  /Mark-time routine ran/
+MOK:    .ASCIZ  /GTIM ok/
+MNO:    .ASCIZ  /?TIMER-E-Mark-time did not fire/
+MERR:   .ASCIZ  /?TIMER-F-MRKT failed/
+        .EVEN
+        .END    START

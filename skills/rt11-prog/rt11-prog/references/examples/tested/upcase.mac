@@ -1,0 +1,42 @@
+        .TITLE  UPCASE  Copy a file, folding lower case to upper (CSIGEN demo)
+        .MCALL  .CSIGEN,.READW,.WRITW,.CLOSE,.EXIT,.PRINT
+ERRBYT  =       52
+START:  .CSIGEN #DSPACE,#DEFEXT,#0      ; '*' prompt; out file on ch 0, in file on ch 3
+        CLR     IBLK
+LOOP:   .READW  #AREA,#3,#BUF,#256.,IBLK
+        BCS     RDERR
+        MOV     R0,WCNT                 ; words actually read
+        MOV     R0,R1
+        ASL     R1                      ; bytes
+        MOV     #BUF,R2
+1$:     CMPB    (R2),#'a
+        BLO     2$
+        CMPB    (R2),#'z
+        BHI     2$
+        BICB    #40,(R2)
+2$:     INC     R2
+        SOB     R1,1$
+        .WRITW  #AREA,#0,#BUF,WCNT,IBLK
+        BCS     WRERR
+        INC     IBLK
+        BR      LOOP
+RDERR:  TSTB    @#ERRBYT                ; 0 = end of file, else hard error
+        BNE     HARD
+        .CLOSE  #0                      ; makes the output permanent
+        .PRINT  #DONE
+        .EXIT
+HARD:   .PRINT  #MRD
+        .EXIT
+WRERR:  .PRINT  #MWR
+        .EXIT
+AREA:   .BLKW   10.
+IBLK:   .WORD   0
+WCNT:   .WORD   0
+DEFEXT: .RAD50  /TXTTXT      /          ; default input ext TXT, outputs TXT
+MRD:    .ASCIZ  /?UPCASE-F-Read error/
+MWR:    .ASCIZ  /?UPCASE-F-Write error/
+DONE:   .ASCIZ  /UPCASE done/
+        .EVEN
+BUF:    .BLKW   256.
+DSPACE: .BLKW   0                       ; handlers loaded here by .CSIGEN
+        .END    START

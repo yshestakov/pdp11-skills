@@ -1,0 +1,36 @@
+        .TITLE  TTYT    JSW special mode, .GTLIN, .LOOKUP error codes
+        .MCALL  .TTYIN,.TTYOUT,.PRINT,.EXIT,.GTLIN,.LOOKUP,.PURGE
+JSW     =       44
+ERRBYT  =       52
+START:  .GTLIN  #LINE,#PROMPT           ; prompt + line from terminal (ASCIZ, no CR/LF)
+        .PRINT  #ECHO
+        .PRINT  #LINE
+        BIS     #10000!40000,@#JSW      ; TTSPC$ single-char, TTLC$ lower case
+        .PRINT  #ASK
+        MOV     #3,R2
+1$:     .TTYIN                          ; char -> R0, no echo in special mode
+        MOV     R0,R1                   ; save it: .TTYOUT #x loads R0
+        .TTYOUT #'[
+        .TTYOUT R1
+        .TTYOUT #']
+        SOB     R2,1$
+        BIC     #10000!40000,@#JSW
+        .PRINT  #CRLF
+        .LOOKUP #AREA,#0,#NOFILE
+        BCC     2$
+        MOVB    @#ERRBYT,R1
+        ADD     #'0,R1
+        .PRINT  #LKERR                  ; clobbers R0
+        .TTYOUT R1
+        .PRINT  #CRLF
+2$:     .EXIT
+AREA:   .BLKW   5
+NOFILE: .RAD50  /DK NOSUCHTXT/
+PROMPT: .ASCII  /Name? /<200>
+ECHO:   .ASCII  /Got: /<200>
+ASK:    .ASCII  /Press 3 keys: /<200>
+LKERR:  .ASCII  /LOOKUP error code /<200>
+CRLF:   .BYTE   0
+        .EVEN
+LINE:   .BLKB   82.
+        .END    START

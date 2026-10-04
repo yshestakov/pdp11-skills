@@ -1,0 +1,16 @@
+# One-time first boot of an RT-11 V5.3 *distribution* disk (rtv53_rl.dsk) so it boots
+# straight to the RT11FB monitor afterwards. Run on a COPY of the image:
+#   cp rtv53_rl.dsk rt11-work.dsk
+#   simh_run.py --timeout 180 rt11-rl02.ini --steps rt11v53-firstboot.steps
+# Answering NO to "automatic installation" makes AI copy the RT11FB bootstrap to the
+# disk and reboot. The auto-install path (YES) wants backup media - don't use it here.
+timeout 120
+expect Press the "RETURN" key when ready
+line
+expect press the "RETURN" key\):
+line NO
+expect Press the "RETURN" key when ready
+line
+expect ^\.$
+line SHOW
+expect ^\.$

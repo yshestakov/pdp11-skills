@@ -16,3 +16,8 @@ This skill is based on SimH 3.9 documentation.
 It contains a few helper scripts, ini files to run programs on bare-metal or under RT-11 control.
 
 RT-11 images are not included of course due to licensing issues.
+
+
+## `rt11-utils`
+
+This skill is based on the "AA-M239B-TC RT-11 System Utilities Manual Jul84" document.

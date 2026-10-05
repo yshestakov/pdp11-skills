@@ -21,7 +21,7 @@ Interaction with a running guest is done from outside, by `scripts/simh_run.py`.
 | `simh_run.py CONFIG.ini [steps…]` | Run SIMH under a pty with a hard timeout; `expect REGEX` / `line TEXT` / `send TEXT` / `wru` / `sim CMD` / `sleep N` steps; transcript to stdout and `--log`; always shuts SIMH down cleanly. Exit 0 ok, 1 timeout, 2 no simulator, 4 an ASSERT failed. |
 | `rt11_do.py CONFIG.ini "CMD" "CMD"…` | Boot RT-11, type each keyboard-monitor command at the `.` prompt, wait for the next prompt, exit. `--date 02-OCT-99`, `--commands file`, `--log`. Summarizes `?xxx-E-` messages on stderr. Exit 3 = distribution disk still in its install dialogue. |
 | `rt11fs.py ls/get/put/rm/init/info IMAGE …` | Read and write files on RT-11 disk images from the host (no PUTR needed); create empty RT-11 data volumes. |
-| `bare_run.py prog.mac\|prog.lda` | Stand-alone program: assemble (macro11 + obj2bin.pl), LOAD, GO, print console output and R0–R5/SP/PC/PSW at HALT. `--input "text\r"`, `--cpu`, `--timeout`. |
+| `bare_run.py prog.mac\|prog.lda` | Stand-alone program: assemble and link (macro11 + pclink11), LOAD, GO, print console output and R0–R5/SP/PC/PSW at HALT. `--input "text\r"`, `--cpu`, `--timeout`. |
 
 Run any script with `-h` for full options.
 
@@ -124,15 +124,17 @@ XCSR 177564, XBUF 177566; ready = bit 7) and ends with `HALT`. Use absolute code
 ```sh
 python3 scripts/bare_run.py prog.mac --cpu 11/05 [--input 'abc\r'] [--timeout 20]
 ```
-Needs `macro11`, `pclink11` and `obj2bin.pl`:
+Needs `macro11` and `pclink11`:
 - github.com/andpp/macro11; `make` builds macro11;
-- github.com/andpp/pclink11; `make` builds pclink11;
-- obj2bin is Perl.
+- github.com/yshestakov/pclink11; `make` builds pclink11.
+`bare_run.py` links with `pclink11 X.OBJ /LDA`, which writes the absolute-loader file directly:
+one block per run of loaded bytes (gaps such as `.BLKW` are not loaded) plus a final block
+holding the `.END` transfer address (odd = no auto-start). `obj2bin.pl` is no longer used.
 Without them, build the .lda inside RT-11 with `MACRO X` + `LINK/LDA X`, copy it out with
 `rt11fs.py get`, and pass the .lda. SIMH's `LOAD` takes only the absolute-loader (paper-tape)
 format, sets PC from the end block, and does not start the program — `GO` does.
 
-Check presence of `macro11`, `pclink11`, `obj2bin.pl` in `PATH` env or/and in `/usr/local/bin`
+Check presence of `macro11`, `pclink11` in `PATH` env or/and in `/usr/local/bin`
 
 When a program doesn't halt, `^E` stops it and SIMH continues with the next line of the .ini
 (that's how `bare_run.py` still gets its register dump after a timeout).

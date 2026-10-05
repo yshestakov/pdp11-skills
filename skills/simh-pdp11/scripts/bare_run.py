@@ -10,9 +10,9 @@ Program requirements: absolute code (.ASECT, or relocatable code linked/loaded a
 Console I/O must be done directly on the DL11 registers (177560-177566) - there is
 no OS, so no .PRINT/.TTYOUT.
 
-.mac -> .lda needs the macro11 cross-assembler and obj2bin.pl (both from
-github.com/Rhialto/macro11). Located via $MACRO11 / $OBJ2BIN, then PATH, then
-~/macro11/. If they're missing, assemble inside RT-11 instead
+.mac -> .lda needs the macro11 cross-assembler and a pclink11 linker with the /LDA
+option (absolute-loader output). Located via
+$MACRO11 / $PCLINK11, then PATH. If they're missing, assemble inside RT-11 instead
 (MACRO X / LINK/LDA X, see references/rt11-on-simh.md) and pass the .lda here.
 
 Exit status: 0 halted normally, 1 timeout or error, 2 tools/simulator missing.
@@ -40,25 +40,28 @@ def find_tool(env, names, extra):
 
 def assemble(src, work):
     m11 = find_tool("MACRO11", ["macro11"], ["~/macro11/macro11", "/usr/local/bin/macro11"])
-    o2b = find_tool("OBJ2BIN", ["obj2bin.pl"], ["~/macro11/obj2bin/obj2bin.pl"])
-    if not m11 or not o2b:
-        print("bare_run: need macro11 and obj2bin.pl (set $MACRO11 / $OBJ2BIN), or build the .lda in RT-11 "
+    lnk = find_tool("PCLINK11", ["pclink11"], ["/usr/local/bin/pclink11"])
+    if not m11 or not lnk:
+        print("bare_run: need macro11 and pclink11 (set $MACRO11 / $PCLINK11), or build the .lda in RT-11 "
               "(MACRO X then LINK/LDA X) and pass it here", file=sys.stderr)
         sys.exit(2)
     base = os.path.join(work, os.path.splitext(os.path.basename(src))[0])
-    r = subprocess.run([m11, "-rt11", "-o", base + ".obj", "-l", base + ".lst", src],
-                       capture_output=True, text=True)
+    r = subprocess.run([m11, "-o", base + ".obj", "-l", base + ".lst", src],
+                       capture_output=True, text=True, timeout=30)
     errs = [l for l in (r.stdout + r.stderr).splitlines() if "ERROR" in l]
     if errs or r.returncode:
         print("bare_run: assembly failed:\n  " + "\n  ".join(errs or [r.stderr]), file=sys.stderr)
         print("listing: " + base + ".lst", file=sys.stderr)
         sys.exit(1)
-    r = subprocess.run(["perl", o2b, "--rt11", "--binary", "--outfile=" + base + ".lda", base + ".obj"],
-                       capture_output=True, text=True)
-    if r.returncode or not os.path.exists(base + ".lda"):
-        print("bare_run: obj2bin failed:\n" + r.stdout + r.stderr, file=sys.stderr)
+    # /LDA writes absolute-loader blocks for the loaded bytes plus the transfer-address block
+    lda = base + ".lda"
+    r = subprocess.run([lnk, os.path.basename(base) + ".obj", "/LDA", "/EXECUTE:" + os.path.basename(lda)],
+                       cwd=work, capture_output=True, text=True, timeout=30)
+    if r.returncode or "SUCCESS" not in r.stdout or not os.path.exists(lda):
+        print("bare_run: pclink11 /LDA failed (needs a pclink11 with the /LDA option):\n"
+              + r.stdout[-2000:] + r.stderr, file=sys.stderr)
         sys.exit(1)
-    return base + ".lda"
+    return lda
 
 
 def main():

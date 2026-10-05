@@ -6,7 +6,8 @@ Usage: assemble_rt11.py prog.mac [--cpu 11/70] [--input "text\\r"] [--timeout 20
 This script:
 1. Assembles with macro11 (no -rt11 flag - use -m SYSMAC.SML instead)
 2. Uses pclink11 to link for RT-11 .SAV format
-3. If bare-metal, converts to .LDA with obj2bin.pl
+3. If bare-metal (--bare), links to .LDA with pclink11 /LDA instead
+SYSMAC.SML (for .MCALL) is taken from $SYSMAC, the current directory or the project root.
 
 Exit status: 0 success, 1 error
 """
@@ -29,66 +30,63 @@ def find_tool(env, names, extra):
             return e
     return None
 
-def assemble(src, work, bare=False):
+def find_sysmac():
+    # $SYSMAC, then the current directory, then the project root (4 levels above scripts/)
+    here = os.path.dirname(os.path.abspath(__file__))
+    for c in (os.environ.get("SYSMAC"), "SYSMAC.SML",
+              os.path.join(here, "..", "..", "..", "..", "SYSMAC.SML")):
+        if c and os.path.exists(c):
+            return os.path.abspath(c)
+    return None
+
+def assemble(src, work):
     m11 = find_tool("MACRO11", ["macro11"], ["~/macro11/macro11", "/usr/local/bin/macro11"])
     if not m11:
         print("assemble_rt11: need macro11 (set $MACRO11)", file=sys.stderr)
         sys.exit(1)
-    
+
     base = os.path.join(work, os.path.splitext(os.path.basename(src))[0])
-    
+
     # Check if .MCALLs are present
     with open(src) as f:
         content = f.read()
     use_rt11 = '.MCALL' in content
-    
+
     # Assemble
+    cmd = [m11, "-o", base + ".obj", "-l", base + ".lst", src]
     if use_rt11:
         # RT-11 program with .MCALL - include SYSMAC.SML
-        cmd = [m11, "-o", base + ".obj", "-l", base + ".lst", src, "-m", 
-               os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "..", "..", "..", "SYSMAC.SML")]
-    else:
-        # Bare-metal program without .MCALL
-        cmd = [m11, "-o", base + ".obj", "-l", base + ".lst", src]
-    
-    r = subprocess.run(cmd, capture_output=True, text=True)
+        sysmac = find_sysmac()
+        if not sysmac:
+            print("assemble_rt11: .MCALL needs SYSMAC.SML (set $SYSMAC)", file=sys.stderr)
+            sys.exit(1)
+        cmd += ["-m", sysmac]
+
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
     errs = [l for l in (r.stdout + r.stderr).splitlines() if "ERROR" in l or "***" in l]
     if errs or r.returncode:
         print("assemble_rt11: assembly failed:\n  " + "\n  ".join(errs or [r.stderr]), file=sys.stderr)
         print("listing: " + base + ".lst", file=sys.stderr)
         sys.exit(1)
-    
-    if bare:
-        # Convert to .LDA for bare-metal execution
-        o2b = find_tool("OBJ2BIN", ["obj2bin.pl"], ["~/macro11/obj2bin/obj2bin.pl"])
-        if not o2b:
-            print("assemble_rt11: bare-metal needs obj2bin.pl (set $OBJ2BIN)", file=sys.stderr)
-            sys.exit(1)
-        r = subprocess.run(["perl", o2b, "--rt11", "--binary", "--outfile=" + base + ".lda", base + ".obj"],
-                          capture_output=True, text=True)
-        if r.returncode or not os.path.exists(base + ".lda"):
-            print("assemble_rt11: obj2bin failed", file=sys.stderr)
-            sys.exit(1)
-        return base + ".lda"
-    else:
-        return base + ".obj"
+    return base + ".obj"
 
-def link_rt11(obj, work):
-    link = find_tool("PCLINK11", ["pclink11"], ["~/macro11/pclink11", "/usr/local/bin/pclink11"])
-    if not link:
+def link(obj, work, bare=False):
+    """Link with pclink11: RT-11 .SAV, or with bare=True an absolute-loader .LDA (/LDA)."""
+    lnk = find_tool("PCLINK11", ["pclink11"], ["~/macro11/pclink11", "/usr/local/bin/pclink11"])
+    if not lnk:
         print("assemble_rt11: need pclink11 (set $PCLINK11)", file=sys.stderr)
         sys.exit(1)
-    
-    base = os.path.join(work, os.path.splitext(os.path.basename(obj))[0])
-    
-    # Link for RT-11 .SAV format
-    r = subprocess.run([link, "-o", base + ".sav", obj], capture_output=True, text=True)
-    errs = [l for l in (r.stdout + r.stderr).splitlines() if "ERROR" in l or "***" in l]
-    if errs or r.returncode:
-        print("assemble_rt11: link failed:\n  " + "\n  ".join(errs or [r.stderr]), file=sys.stderr)
+
+    name = os.path.splitext(os.path.basename(obj))[0] + (".lda" if bare else ".sav")
+    out = os.path.join(work, name)
+    cmd = [lnk, os.path.basename(obj), "/EXECUTE:" + name] + (["/LDA"] if bare else [])
+    r = subprocess.run(cmd, cwd=work, capture_output=True, text=True, timeout=30)
+    errs = [l for l in (r.stdout + r.stderr).splitlines() if "ERROR" in l]
+    if errs or r.returncode or "SUCCESS" not in r.stdout or not os.path.exists(out):
+        print("assemble_rt11: link failed:\n  " + "\n  ".join(errs or [r.stdout[-2000:] + r.stderr]),
+              file=sys.stderr)
         sys.exit(1)
-    
-    return base + ".sav"
+    return out
 
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -107,13 +105,9 @@ def main():
     work = tempfile.mkdtemp(prefix="assemble_rt11_")
     prog = os.path.abspath(a.program)
     
-    # Assemble
-    if a.bare:
-        obj = assemble(prog, work, bare=True)
-        lda = obj  # obj2bin created .lda directly
-    else:
-        obj = assemble(prog, work, bare=False)
-        lda = link_rt11(obj, work)
+    # Assemble and link (.LDA for bare metal, .SAV for RT-11)
+    obj = assemble(prog, work)
+    lda = link(obj, work, bare=a.bare)
     
     print(f"Assembled: {obj}")
     print(f"Linked: {lda}")

@@ -17,8 +17,8 @@ fi
 echo "=== Assembling h0bare.mac (bare-metal) ==="
 macro11 -o h0bare.obj -l h0bare.lst h0bare.mac -m "$SYSMAC"
 
-echo "=== Converting to LDA (bare-metal loader format) ==="
-obj2bin.pl --rt11 --binary --outfile=h0bare.lda h0bare.obj
+echo "=== Linking to LDA (bare-metal loader format) ==="
+pclink11 h0bare.obj /LDA /EXECUTE:h0bare.lda
 
 echo "=== Build complete ==="
 ls -lh h0bare.*

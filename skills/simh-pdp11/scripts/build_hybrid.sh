@@ -19,13 +19,13 @@ elif [[ "$TARGET_MODE" == "--bare" ]]; then
     SOURCE="/tmp/h0hybrid.mac"
     MODE="bare-metal"
     OBJ="hello_hybrid.obj"
-    LDFLAGS="/EXECUTE:hello_hybrid.sav"
-    
+
     # Create bare-metal version by uncommenting the bare-metal code
     awk '
-    /^START::\.PRINT/ { print "START:: MOV     #MSG,R1"; next }
+    /^START::[ \t]*\.PRINT/ { print "START:: MOV     #MSG,R1"; next }
+    /^[ \t]+\.EXIT/ { next }
     /^MSG:/ { print "1$:      MOVB    (R1)+,R0"; print "         TSTB    R0"; print "         BEQ     2$"; next }
-    /^        \.END/ { print "         BR      1$"; print "2$:      TTYWAIT 4$"; print "         MOVB    #15,@#DLXBUF"; print "         TTYWAIT 5$"; print "         MOVB    #12,@#DLXBUF"; print "         HALT"; print "MSG:    .ASCIZ  /Hello, world!/"; print "        .EVEN"; print "        .END    START"; exit }
+    /^        \.END/ { print "         TTYWAIT 3$"; print "         MOVB    R0,@#DLXBUF"; print "         BR      1$"; print "2$:      TTYWAIT 4$"; print "         MOVB    #15,@#DLXBUF"; print "         TTYWAIT 5$"; print "         MOVB    #12,@#DLXBUF"; print "         HALT"; print "MSG:    .ASCIZ  /Hello, world!/"; print "        .EVEN"; print "        .END    START"; exit }
     { print }
     ' "$SCRIPT_DIR/hello_hybrid.mac" > "$SOURCE"
 else
@@ -43,8 +43,8 @@ echo "=== Assembling $SOURCE ($MODE) ==="
 macro11 -o "$OBJ" -l hello_hybrid.lst "$SOURCE" -m "$SYSMAC"
 
 if [[ "$TARGET_MODE" == "--bare" ]]; then
-    echo "=== Converting to LDA (bare-metal loader format) ==="
-    obj2bin.pl --rt11 --binary --outfile=hello_hybrid.lda "$OBJ"
+    echo "=== Linking to LDA (bare-metal loader format) ==="
+    pclink11 "$OBJ" /LDA /EXECUTE:hello_hybrid.lda
     echo "=== Build complete - hello_hybrid.lda ==="
 else
     echo "=== Linking for RT-11 ==="

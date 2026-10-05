@@ -159,6 +159,17 @@ class Session:
     def at_prompt(self):
         return self.buf.rstrip(" ").endswith("sim>")
 
+    def _kill(self, sig):
+        # killpg fails with EPERM (macOS) or ESRCH when the group leader is exiting or a
+        # zombie; the process is then gone or going, so signal it directly as a fallback
+        try:
+            os.killpg(self.proc.pid, sig)
+        except (PermissionError, ProcessLookupError):
+            try:
+                self.proc.send_signal(sig)
+            except OSError:
+                pass
+
     def close(self):
         self.drain(0.3)
         if self.alive() and "Goodbye" not in self.buf[-40:]:
@@ -177,11 +188,16 @@ class Session:
                     self._pump(0.05)
             except OSError:
                 pass
+        # after "Goodbye" SIMH is already on its way out - give it a moment to be reaped
+        for _ in range(20):
+            if not self.alive():
+                break
+            self._pump(0.05)
         if self.alive():
-            os.killpg(self.proc.pid, signal.SIGTERM)
+            self._kill(signal.SIGTERM)
             time.sleep(0.5)
             if self.alive():
-                os.killpg(self.proc.pid, signal.SIGKILL)
+                self._kill(signal.SIGKILL)
         self.drain(0.2)
         if self.log:
             self.log.close()
